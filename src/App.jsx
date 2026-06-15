@@ -11,8 +11,8 @@ function App() {
   const [namaPemilik, setNamaPemilik] = useState('');
   const [noHp, setNoHp] = useState(''); 
   const [omset, setOmset] = useState(''); 
-  const [sosmed, setSosmed] = useState(''); // Kolom Baru: Sosmed
-  const [deskripsiMasalah, setDeskripsiMasalah] = useState(''); // Kolom Baru: Deskripsi Masalah
+  const [sosmed, setSosmed] = useState(''); 
+  const [deskripsiMasalah, setDeskripsiMasalah] = useState(''); 
   const [dusun, setDusun] = useState('');
   const [kategori, setKategori] = useState('');
 
@@ -36,7 +36,8 @@ function App() {
         },
         (error) => {
           setLoadingGps(false);
-          alert("Gagal mengambil GPS. Pastikan setelan lokasi/GPS di HP aktif!");
+          alert("Gagal mengambil GPS. Pastikan setelan lokasi/GPS di HP aktif dan browser diizinkan mengakses lokasi!");
+          console.error(error);
         },
         { enableHighAccuracy: true, timeout: 15000 }
       );
@@ -45,25 +46,32 @@ function App() {
     }
   };
 
-  // 2. FUNGSI HANDLE FOTO KAMERA + KOMPRESI OTOMATIS
+  // 2. FUNGSI HANDLE FOTO KAMERA + KOMPRESI OTOMATIS (VERSI AMAN & ANTI-BUG)
   const handleKameraChange = async (e) => {
-    const fileAsli = e.target.files; 
-    if (!fileAsli) return;
+    const fileTarget = e.target.files; 
+    if (!fileTarget) return;
 
-    setPreviewFoto(URL.createObjectURL(fileAsli));
+    // Tampilkan preview foto asli ke layar biar tim KKN langsung tau gambarnya masuk
+    setPreviewFoto(URL.createObjectURL(fileTarget));
 
     const opsiKompresi = {
-      maxSizeMB: 0.3,          
+      maxSizeMB: 0.3,          // Target ukuran 300 KB
       maxWidthOrHeight: 1024,  
       useWebWorker: true       
     };
 
     try {
-      const fileHasilKompresi = await imageCompression(fileAsli, opsiKompresi);
+      console.log("Memulai kompresi gambar...");
+      const fileHasilKompresi = await imageCompression(fileTarget, opsiKompresi);
+      
+      // Jika berhasil dikompresi, simpan hasil kompresinya
       setFileFoto(fileHasilKompresi);
+      console.log("Kompresi sukses!");
     } catch (error) {
-      console.error("Gagal mengkompresi gambar:", error);
-      setFileFoto(fileAsli);
+      console.error("Gagal mengkompresi gambar, otomatis menggunakan file asli:", error);
+      
+      // FALLBACK SAKTI: Jika proses kompresi hang/gagal di HP tim, langsung loloskan file asli agar form tidak macet
+      setFileFoto(fileTarget); 
     }
   };
 
@@ -71,6 +79,7 @@ function App() {
   const handleSubmitData = async (e) => {
     e.preventDefault();
     
+    // Validasi final sebelum kirim database
     if (!koordinat.lat || !fileFoto) {
       alert("⚠️ Gagal menyimpan! Harap klik tombol GPS dan ambil foto UMKM terlebih dahulu.");
       return;
@@ -85,7 +94,7 @@ function App() {
       const uploadResult = await uploadBytes(storageRef, fileFoto);
       const downloadUrl = await getDownloadURL(uploadResult.ref);
 
-      // Simpan semua data lapangan ke Firestore
+      // Mengirim semua data ke Firestore
       await addDoc(collection(db, "umkm_sukadana"), {
         tim_pendata: kelompok,
         nama_umkm: namaUmkm,
@@ -104,7 +113,7 @@ function App() {
 
       alert(`🎉 Data UMKM dari ${kelompok} sukses tersimpan ke Firebase!`);
       
-      // Reset Form total setelah sukses
+      // Reset Form total untuk pendataan UMKM berikutnya
       setNamaUmkm('');
       setNamaPemilik('');
       setNoHp('');
@@ -118,8 +127,8 @@ function App() {
       setPreviewFoto(null);
 
     } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan sistem saat mengunggah data.");
+      console.error("Firebase error: ", error);
+      alert("Terjadi kesalahan sistem saat mengunggah data. Pastikan internet lancar.");
     } finally {
       setLoadingSubmit(false);
     }
@@ -184,7 +193,7 @@ function App() {
   return (
     <div style={{ padding: '15px', maxWidth: '480px', margin: '0 auto', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', backgroundColor: '#fff', minHeight: '100vh' }}>
       
-      {/* Header */}
+      {/* Header Aplikasi */}
       <div style={{ textAlign: 'center', marginBottom: '25px', paddingBottom: '15px', borderBottom: '2px solid #eaeaea' }}>
         <h2 style={{ margin: '0 0 5px 0', color: '#1a1a1a', fontSize: '24px', fontWeight: '800' }}>Sensus UMKM Digital</h2>
         <p style={{ margin: '0', fontSize: '14px', color: '#666', fontWeight: '500' }}>Desa Sukadana • Internal KKN 2026</p>
@@ -205,7 +214,7 @@ function App() {
           </select>
         </div>
 
-        {/* Input Data Teks */}
+        {/* Input Usaha */}
         <div>
           <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Tempat / UMKM:</label>
           <input type="text" value={namaUmkm} onChange={(e) => setNamaUmkm(e.target.value)} required placeholder="Masukkan nama toko/usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
@@ -233,7 +242,6 @@ function App() {
           </select>
         </div>
 
-        {/* INPUT BARU: KEPEMILIKAN SOSMED */}
         <div>
           <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Apakah Memiliki Media Sosial Usaha?</label>
           <select value={sosmed} onChange={(e) => setSosmed(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
@@ -260,7 +268,6 @@ function App() {
           </select>
         </div>
 
-        {/* INPUT BARU: DESKRIPSI MASALAH */}
         <div>
           <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Deskripsi Masalah / Kendala UMKM:</label>
           <textarea value={deskripsiMasalah} onChange={(e) => setDeskripsiMasalah(e.target.value)} required placeholder="Ceritakan kendala usaha (misal: Kurang modal, pemasaran macet, belum ada izin PIRT, kemasan kurang menarik, dll.)" rows="4" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
