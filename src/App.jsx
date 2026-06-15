@@ -45,15 +45,50 @@ function App() {
     }
   };
 
-  // 2. FUNGSI HANDLE FOTO KAMERA DIRECT (TANPA BEBAN KOMPRESI)
+  // 2. FUNGSI KOMPRESI GAMBAR INSTAN LEWAT CANVAS (ANTI-LEMOT & RINGAN)
   const handleKameraChange = (e) => {
     const fileTarget = e.target.files; 
     if (!fileTarget) return;
 
-    // Simpan file asli langsung ke dalam state tanpa proses ribet
-    setFileFoto(fileTarget);
+    // Tampilkan preview foto asli dulu biar user tidak menunggu
     setPreviewFoto(URL.createObjectURL(fileTarget));
-    console.log("Foto sukses masuk ke sistem:", fileTarget.name);
+
+    const reader = new FileReader();
+    reader.readAsDataURL(fileTarget);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        // Skala resolusi maksimal (lebar 1024px, tinggi otomatis proporsional)
+        const MAX_WIDTH = 1024;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+
+        // Gambar ulang di Canvas HTML5 bawaan browser
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Ubah canvas menjadi file blob JPG dengan kualitas 75% (sangat hemat kuota tapi tetap tajam)
+        ctx.canvas.toBlob((blob) => {
+          const fileHasilKompresi = new File([blob], fileTarget.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          
+          // Simpan file hasil kompresi super enteng ini ke state
+          setFileFoto(fileHasilKompresi);
+          console.log(`⚡ Foto berhasil dikompresi langsung oleh HP ke ukuran minimal!`);
+        }, 'image/jpeg', 0.75);
+      };
+    };
   };
 
   // 3. FUNGSI SIMPAN DATA KE FIREBASE
@@ -75,11 +110,11 @@ function App() {
       const namaFileUnik = `umkm_${kelompok || 'anonim'}_${Date.now()}_${fileFoto.name || 'foto.jpg'}`;
       const storageRef = ref(storage, `foto_umkm/${namaFileUnik}`);
       
-      // Upload file langsung ke Firebase Storage
+      // Mengunggah file kompresi (Ukurannya kecil, jadi proses uploadnya instan)
       const uploadResult = await uploadBytes(storageRef, fileFoto);
       const downloadUrl = await getDownloadURL(uploadResult.ref);
 
-      // Simpan data teks ke Firestore Database
+      // Simpan ke Firestore
       await addDoc(collection(db, "umkm_sukadana"), {
         tim_pendata: kelompok,
         nama_umkm: namaUmkm,
@@ -113,7 +148,7 @@ function App() {
 
     } catch (error) {
       console.error("Firebase error detail: ", error);
-      alert("Gagal mengunggah ke Firebase. Pastikan gembok Rules Firestore & Storage kamu sudah disetting 'true'!");
+      alert("Gagal mengunggah ke Firebase. Pastikan koneksi internet stabil!");
     } finally {
       setLoadingSubmit(false);
     }
@@ -185,119 +220,121 @@ function App() {
       </div>
       
       <form onSubmit={handleSubmitData} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-        
-        {/* Dropdown Kelompok */}
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Tim Pendata KKN:</label>
-          <select value={kelompok} onChange={(e) => setKelompok(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
-            <option value="">-- Pilih Kelompok Kamu --</option>
-            <option value="Kelompok 1">Kelompok 1</option>
-            <option value="Kelompok 2">Kelompok 2</option>
-            <option value="Kelompok 3">Kelompok 3</option>
-            <option value="Kelompok 4">Kelompok 4</option>
-            <option value="Kelompok 5">Kelompok 5</option>
-          </select>
-        </div>
-
-        {/* Inputs */}
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Tempat / UMKM:</label>
-          <input type="text" value={namaUmkm} onChange={(e) => setNamaUmkm(e.target.value)} required placeholder="Masukkan nama toko/usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Pemilik:</label>
-          <input type="text" value={namaPemilik} onChange={(e) => setNamaPemilik(e.target.value)} required placeholder="Nama pemilik usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nomor HP / WhatsApp Pemilik:</label>
-          <input type="tel" value={noHp} onChange={(e) => setNoHp(e.target.value)} required placeholder="Contoh: 081234567xxx" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Estimasi Omset per Bulan:</label>
-          <select value={omset} onChange={(e) => setOmset(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
-            <option value="">-- Pilih Range Omset --</option>
-            <option value="< 1 Juta">Kurang dari Rp 1 Juta</option>
-            <option value="1 - 5 Juta">Rp 1 Juta - Rp 5 Juta</option>
-            <option value="5 - 10 Juta">Rp 5 Juta - Rp 10 Juta</option>
-            <option value="10 - 50 Juta">Rp 10 Juta - Rp 50 Juta</option>
-            <option value="> 50 Juta">Lebih dari Rp 50 Juta</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Apakah Memiliki Media Sosial Usaha?</label>
-          <select value={sosmed} onChange={(e) => setSosmed(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
-            <option value="">-- Pilih Status Sosial Media --</option>
-            <option value="Ada">Ya, Ada (Instagram/Facebook/TikTok/WA Business)</option>
-            <option value="Tidak Ada">Tidak Ada / Belum Menggunakan Sosmed</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Dusun:</label>
-          <input type="text" value={dusun} onChange={(e) => setDusun(e.target.value)} required placeholder="Contoh: Dusun Sukadana Barat" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Kategori Bidang Usaha:</label>
-          <select value={kategori} onChange={(e) => setKategori(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
-            <option value="">-- Pilih Jenis Kategori --</option>
-            <option value="Kuliner">Kuliner (Warung, Snack, Rumah Makan)</option>
-            <option value="Kerajinan">Kerajinan / Industri Rumah Tangga</option>
-            <option value="Pertanian">Pertanian / Peternakan / Kebun</option>
-            <option value="Kios">Kios / Toko Kelontong Sembako</option>
-            <option value="Jasa">Jasa (Bengkel, Cukur, Penjahit)</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Deskripsi Masalah / Kendala UMKM:</label>
-          <textarea value={deskripsiMasalah} onChange={(e) => setDeskripsiMasalah(e.target.value)} required placeholder="Ceritakan kendala usaha warga..." rows="4" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
-        </div>
-
-        {/* Panel GPS */}
-        <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', color: '#495057', fontSize: '14px' }}>Sistem Kunci Lokasi (GPS)</label>
-          {koordinat.lat ? (
-            <div style={{ margin: '0 0 12px 0', padding: '8px', backgroundColor: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: '4px', fontSize: '13px', fontFamily: 'monospace', color: '#2e7d32', fontWeight: 'bold', textAlign: 'center' }}>
-              🎯 LOKASI TERKUNCI: {koordinat.lat.toFixed(6)}, {koordinat.lng.toFixed(6)}
-            </div>
-          ) : (
-            <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#6c757d' }}>⚠️ Status: Lokasi titik koordinat belum dikunci.</p>
-          )}
-          <button type="button" onClick={ambilGpsOtomatis} disabled={loadingGps} style={{ width: '100%', padding: '10px', cursor: 'pointer', backgroundColor: '#0056b3', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            {loadingGps ? '🔄 Menghubungkan ke Satelit GPS...' : '📍 Kunci Koordinat Otomatis'}
-          </button>
-        </div>
-
-        {/* Panel Kamera */}
-        <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', color: '#495057', fontSize: '14px' }}>Dokumentasi Foto Lapangan</label>
-          <input type="file" accept="image/*" capture="environment" onChange={handleKameraChange} style={{ width: '100%', fontSize: '14px', color: '#495057' }} />
+        <fieldset disabled={loadingSubmit} style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
           
-          {previewFoto && (
-            <div style={{ marginTop: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd' }}>
-              <img src={previewFoto} alt="Pratinjau Lapangan" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', display: 'block' }} />
-            </div>
-          )}
-        </div>
+          {/* Dropdown Kelompok */}
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Tim Pendata KKN:</label>
+            <select value={kelompok} onChange={(e) => setKelompok(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
+              <option value="">-- Pilih Kelompok Kamu --</option>
+              <option value="Kelompok 1">Kelompok 1</option>
+              <option value="Kelompok 2">Kelompok 2</option>
+              <option value="Kelompok 3">Kelompok 3</option>
+              <option value="Kelompok 4">Kelompok 4</option>
+              <option value="Kelompok 5">Kelompok 5</option>
+            </select>
+          </div>
 
-        {/* Tombol Simpan */}
-        <button type="submit" disabled={loadingSubmit} style={{ padding: '14px', fontSize: '16px', fontWeight: 'bold', backgroundColor: loadingSubmit ? '#6c757d' : '#198754', color: 'white', border: 'none', borderRadius: '8px', cursor: loadingSubmit ? 'not-allowed' : 'pointer', marginTop: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}>
-          {loadingSubmit ? '⚡ Sedang Mengunggah Data...' : '💾 SIMPAN DATA KKN'}
-        </button>
+          {/* Inputs Teks */}
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Tempat / UMKM:</label>
+            <input type="text" value={namaUmkm} onChange={(e) => setNamaUmkm(e.target.value)} required placeholder="Masukkan nama toko/usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
 
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Pemilik:</label>
+            <input type="text" value={namaPemilik} onChange={(e) => setNamaPemilik(e.target.value)} required placeholder="Nama pemilik usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nomor HP / WhatsApp Pemilik:</label>
+            <input type="tel" value={noHp} onChange={(e) => setNoHp(e.target.value)} required placeholder="Contoh: 081234567xxx" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Estimasi Omset per Bulan:</label>
+            <select value={omset} onChange={(e) => setOmset(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
+              <option value="">-- Pilih Range Omset --</option>
+              <option value="< 1 Juta">Kurang dari Rp 1 Juta</option>
+              <option value="1 - 5 Juta">Rp 1 Juta - Rp 5 Juta</option>
+              <option value="5 - 10 Juta">Rp 5 Juta - Rp 10 Juta</option>
+              <option value="10 - 50 Juta">Rp 10 Juta - Rp 50 Juta</option>
+              <option value="> 50 Juta">Lebih dari Rp 50 Juta</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Apakah Memiliki Media Sosial Usaha?</label>
+            <select value={sosmed} onChange={(e) => setSosmed(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
+              <option value="">-- Pilih Status Sosial Media --</option>
+              <option value="Ada">Ya, Ada (Instagram/Facebook/TikTok/WA Business)</option>
+              <option value="Tidak Ada">Tidak Ada / Belum Menggunakan Sosmed</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Dusun:</label>
+            <input type="text" value={dusun} onChange={(e) => setDusun(e.target.value)} required placeholder="Contoh: Dusun Sukadana Barat" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Kategori Bidang Usaha:</label>
+            <select value={kategori} onChange={(e) => setKategori(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
+              <option value="">-- Pilih Jenis Kategori --</option>
+              <option value="Kuliner">Kuliner (Warung, Snack, Rumah Makan)</option>
+              <option value="Kerajinan">Kerajinan / Industri Rumah Tangga</option>
+              <option value="Pertanian">Pertanian / Peternakan / Kebun</option>
+              <option value="Kios">Kios / Toko Kelontong Sembako</option>
+              <option value="Jasa">Jasa (Bengkel, Cukur, Penjahit)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Deskripsi Masalah / Kendala UMKM:</label>
+            <textarea value={deskripsiMasalah} onChange={(e) => setDeskripsiMasalah(e.target.value)} required placeholder="Ceritakan kendala usaha warga..." rows="4" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
+          </div>
+
+          {/* Panel GPS */}
+          <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', color: '#495057', fontSize: '14px' }}>Sistem Kunci Lokasi (GPS)</label>
+            {koordinat.lat ? (
+              <div style={{ margin: '0 0 12px 0', padding: '8px', backgroundColor: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: '4px', fontSize: '13px', fontFamily: 'monospace', color: '#2e7d32', fontWeight: 'bold', textAlign: 'center' }}>
+                🎯 LOKASI TERKUNCI: {koordinat.lat.toFixed(6)}, {koordinat.lng.toFixed(6)}
+              </div>
+            ) : (
+              <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#6c757d' }}>⚠️ Status: Lokasi titik koordinat belum dikunci.</p>
+            )}
+            <button type="button" onClick={ambilGpsOtomatis} disabled={loadingGps || loadingSubmit} style={{ width: '100%', padding: '10px', cursor: 'pointer', backgroundColor: '#0056b3', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+              {loadingGps ? '🔄 Menghubungkan ke Satelit GPS...' : '📍 Kunci Koordinat Otomatis'}
+            </button>
+          </div>
+
+          {/* Panel Kamera */}
+          <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+            <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', color: '#495057', fontSize: '14px' }}>Dokumentasi Foto Lapangan</label>
+            <input type="file" accept="image/*" capture="environment" onChange={handleKameraChange} style={{ width: '100%', fontSize: '14px', color: '#495057' }} />
+            
+            {previewFoto && (
+              <div style={{ marginTop: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd' }}>
+                <img src={previewFoto} alt="Pratinjau Lapangan" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', display: 'block' }} />
+              </div>
+            )}
+          </div>
+
+          {/* Tombol Simpan Keren */}
+          <button type="submit" disabled={loadingSubmit} style={{ padding: '14px', fontSize: '16px', fontWeight: 'bold', backgroundColor: loadingSubmit ? '#6c757d' : '#198754', color: 'white', border: 'none', borderRadius: '8px', cursor: loadingSubmit ? 'not-allowed' : 'pointer', marginTop: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}>
+            {loadingSubmit ? '⚡ Mengunggah Data (Super Cepat)...' : '💾 SIMPAN DATA KKN'}
+          </button>
+
+        </fieldset>
       </form>
 
-      {/* Panel Unduh Data Rekap */}
+      {/* Panel Unduh Data */}
       <div style={{ marginTop: '40px', padding: '15px', borderTop: '2px dashed #ccc', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffeba2' }}>
         <h4 style={{ margin: '0 0 5px 0', color: '#856404', fontWeight: 'bold' }}>🔑 Fitur Khusus Rekap Data</h4>
         <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#856404' }}>Khusus bagian rekapitulasi data. Klik tombol di bawah dari laptop untuk mengunduh seluruh data gabungan kelompok dalam bentuk file CSV/Excel.</p>
         
-        <button type="button" onClick={downloadDataExcel} disabled={loadingDownload} style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 'bold', backgroundColor: '#ffc107', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+        <button type="button" onClick={downloadDataExcel} disabled={loadingDownload || loadingSubmit} style={{ width: '100%', padding: '12px', fontSize: '14px', fontWeight: 'bold', backgroundColor: '#ffc107', color: '#333', border: 'none', borderRadius: '6px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
           {loadingDownload ? '⏳ Sedang Menarik Data Server...' : '📥 UNDUH REKAP DATA (EXCEL)'}
         </button>
       </div>
