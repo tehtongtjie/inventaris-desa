@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { db, storage } from './firebase'; 
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import imageCompression from 'browser-image-compression';
 
 function App() {
   // State untuk Identitas Tim & UMKM
@@ -36,7 +35,7 @@ function App() {
         },
         (error) => {
           setLoadingGps(false);
-          alert("Gagal mengambil GPS. Pastikan setelan lokasi/GPS di HP aktif dan browser diizinkan mengakses lokasi!");
+          alert("Gagal mengambil GPS. Pastikan setelan lokasi/GPS di HP aktif!");
           console.error(error);
         },
         { enableHighAccuracy: true, timeout: 15000 }
@@ -46,55 +45,41 @@ function App() {
     }
   };
 
-  // 2. FUNGSI HANDLE FOTO KAMERA + KOMPRESI OTOMATIS (VERSI AMAN & ANTI-BUG)
-  const handleKameraChange = async (e) => {
+  // 2. FUNGSI HANDLE FOTO KAMERA DIRECT (TANPA BEBAN KOMPRESI)
+  const handleKameraChange = (e) => {
     const fileTarget = e.target.files; 
     if (!fileTarget) return;
 
-    // Tampilkan preview foto asli ke layar biar tim KKN langsung tau gambarnya masuk
+    // Simpan file asli langsung ke dalam state tanpa proses ribet
+    setFileFoto(fileTarget);
     setPreviewFoto(URL.createObjectURL(fileTarget));
-
-    const opsiKompresi = {
-      maxSizeMB: 0.3,          // Target ukuran 300 KB
-      maxWidthOrHeight: 1024,  
-      useWebWorker: true       
-    };
-
-    try {
-      console.log("Memulai kompresi gambar...");
-      const fileHasilKompresi = await imageCompression(fileTarget, opsiKompresi);
-      
-      // Jika berhasil dikompresi, simpan hasil kompresinya
-      setFileFoto(fileHasilKompresi);
-      console.log("Kompresi sukses!");
-    } catch (error) {
-      console.error("Gagal mengkompresi gambar, otomatis menggunakan file asli:", error);
-      
-      // FALLBACK SAKTI: Jika proses kompresi hang/gagal di HP tim, langsung loloskan file asli agar form tidak macet
-      setFileFoto(fileTarget); 
-    }
+    console.log("Foto sukses masuk ke sistem:", fileTarget.name);
   };
 
   // 3. FUNGSI SIMPAN DATA KE FIREBASE
   const handleSubmitData = async (e) => {
     e.preventDefault();
     
-    // Validasi final sebelum kirim database
-    if (!koordinat.lat || !fileFoto) {
-      alert("⚠️ Gagal menyimpan! Harap klik tombol GPS dan ambil foto UMKM terlebih dahulu.");
+    if (!koordinat.lat) {
+      alert("⚠️ Gagal menyimpan! Koordinat GPS belum dikunci.");
+      return;
+    }
+    if (!fileFoto) {
+      alert("⚠️ Gagal menyimpan! Foto UMKM belum diambil.");
       return;
     }
 
     setLoadingSubmit(true);
 
     try {
-      const namaFileUnik = `umkm_${kelompok || 'anonim'}_${Date.now()}_${fileFoto.name}`;
+      const namaFileUnik = `umkm_${kelompok || 'anonim'}_${Date.now()}_${fileFoto.name || 'foto.jpg'}`;
       const storageRef = ref(storage, `foto_umkm/${namaFileUnik}`);
       
+      // Upload file langsung ke Firebase Storage
       const uploadResult = await uploadBytes(storageRef, fileFoto);
       const downloadUrl = await getDownloadURL(uploadResult.ref);
 
-      // Mengirim semua data ke Firestore
+      // Simpan data teks ke Firestore Database
       await addDoc(collection(db, "umkm_sukadana"), {
         tim_pendata: kelompok,
         nama_umkm: namaUmkm,
@@ -111,9 +96,9 @@ function App() {
         waktu_input: serverTimestamp()
       });
 
-      alert(`🎉 Data UMKM dari ${kelompok} sukses tersimpan ke Firebase!`);
+      alert(`🎉 DATA SUKSES TERSIMPAN KE FIREBASE!`);
       
-      // Reset Form total untuk pendataan UMKM berikutnya
+      // Reset Formulir
       setNamaUmkm('');
       setNamaPemilik('');
       setNoHp('');
@@ -127,8 +112,8 @@ function App() {
       setPreviewFoto(null);
 
     } catch (error) {
-      console.error("Firebase error: ", error);
-      alert("Terjadi kesalahan sistem saat mengunggah data. Pastikan internet lancar.");
+      console.error("Firebase error detail: ", error);
+      alert("Gagal mengunggah ke Firebase. Pastikan gembok Rules Firestore & Storage kamu sudah disetting 'true'!");
     } finally {
       setLoadingSubmit(false);
     }
@@ -214,7 +199,7 @@ function App() {
           </select>
         </div>
 
-        {/* Input Usaha */}
+        {/* Inputs */}
         <div>
           <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Tempat / UMKM:</label>
           <input type="text" value={namaUmkm} onChange={(e) => setNamaUmkm(e.target.value)} required placeholder="Masukkan nama toko/usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
@@ -270,7 +255,7 @@ function App() {
 
         <div>
           <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Deskripsi Masalah / Kendala UMKM:</label>
-          <textarea value={deskripsiMasalah} onChange={(e) => setDeskripsiMasalah(e.target.value)} required placeholder="Ceritakan kendala usaha (misal: Kurang modal, pemasaran macet, belum ada izin PIRT, kemasan kurang menarik, dll.)" rows="4" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
+          <textarea value={deskripsiMasalah} onChange={(e) => setDeskripsiMasalah(e.target.value)} required placeholder="Ceritakan kendala usaha warga..." rows="4" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
         </div>
 
         {/* Panel GPS */}
@@ -302,12 +287,12 @@ function App() {
 
         {/* Tombol Simpan */}
         <button type="submit" disabled={loadingSubmit} style={{ padding: '14px', fontSize: '16px', fontWeight: 'bold', backgroundColor: loadingSubmit ? '#6c757d' : '#198754', color: 'white', border: 'none', borderRadius: '8px', cursor: loadingSubmit ? 'not-allowed' : 'pointer', marginTop: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}>
-          {loadingSubmit ? '⚡ Memproses & Mengkompres Gambar...' : '💾 SIMPAN DATA KKN'}
+          {loadingSubmit ? '⚡ Sedang Mengunggah Data...' : '💾 SIMPAN DATA KKN'}
         </button>
 
       </form>
 
-      {/* Panel Khusus Unduh Data Rekap */}
+      {/* Panel Unduh Data Rekap */}
       <div style={{ marginTop: '40px', padding: '15px', borderTop: '2px dashed #ccc', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffeba2' }}>
         <h4 style={{ margin: '0 0 5px 0', color: '#856404', fontWeight: 'bold' }}>🔑 Fitur Khusus Rekap Data</h4>
         <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#856404' }}>Khusus bagian rekapitulasi data. Klik tombol di bawah dari laptop untuk mengunduh seluruh data gabungan kelompok dalam bentuk file CSV/Excel.</p>
