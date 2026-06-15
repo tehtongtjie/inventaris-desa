@@ -45,12 +45,12 @@ function App() {
     }
   };
 
-  // 2. FUNGSI KOMPRESI GAMBAR INSTAN LEWAT CANVAS (ANTI-LEMOT & RINGAN)
+  // 2. FUNGSI KOMPRESI GAMBAR INSTAN LEWAT CANVAS (RINGAN & AMAN)
   const handleKameraChange = (e) => {
     const fileTarget = e.target.files; 
     if (!fileTarget) return;
 
-    // Tampilkan preview foto asli dulu biar user tidak menunggu
+    // Tampilkan pratinjau gambar asli ke layar user
     setPreviewFoto(URL.createObjectURL(fileTarget));
 
     const reader = new FileReader();
@@ -59,8 +59,8 @@ function App() {
       const img = new Image();
       img.src = event.target.result;
       img.onload = () => {
-        // Skala resolusi maksimal (lebar 1024px, tinggi otomatis proporsional)
-        const MAX_WIDTH = 1024;
+        // Batasi resolusi maksimal lebar 800px (sudah sangat cukup jelas untuk laporan KKN)
+        const MAX_WIDTH = 800;
         let width = img.width;
         let height = img.height;
 
@@ -69,24 +69,27 @@ function App() {
           width = MAX_WIDTH;
         }
 
-        // Gambar ulang di Canvas HTML5 bawaan browser
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Ubah canvas menjadi file blob JPG dengan kualitas 75% (sangat hemat kuota tapi tetap tajam)
+        // Ubah gambar jadi blob JPG dengan kualitas 70% (ukuran drop drastis jadi ~100KB-150KB)
         ctx.canvas.toBlob((blob) => {
-          const fileHasilKompresi = new File([blob], fileTarget.name, {
+          if (!blob) {
+            // Jika canvas gagal karena hal teknis, gunakan file asli sebagai cadangan
+            setFileFoto(fileTarget);
+            return;
+          }
+          const fileHasilKompresi = new File([blob], fileTarget.name || "foto_umkm.jpg", {
             type: 'image/jpeg',
             lastModified: Date.now()
           });
           
-          // Simpan file hasil kompresi super enteng ini ke state
           setFileFoto(fileHasilKompresi);
-          console.log(`⚡ Foto berhasil dikompresi langsung oleh HP ke ukuran minimal!`);
-        }, 'image/jpeg', 0.75);
+          console.log("Foto berhasil dikecilkan secara instan lewat Canvas!");
+        }, 'image/jpeg', 0.70);
       };
     };
   };
@@ -110,11 +113,9 @@ function App() {
       const namaFileUnik = `umkm_${kelompok || 'anonim'}_${Date.now()}_${fileFoto.name || 'foto.jpg'}`;
       const storageRef = ref(storage, `foto_umkm/${namaFileUnik}`);
       
-      // Mengunggah file kompresi (Ukurannya kecil, jadi proses uploadnya instan)
       const uploadResult = await uploadBytes(storageRef, fileFoto);
       const downloadUrl = await getDownloadURL(uploadResult.ref);
 
-      // Simpan ke Firestore
       await addDoc(collection(db, "umkm_sukadana"), {
         tim_pendata: kelompok,
         nama_umkm: namaUmkm,
@@ -213,7 +214,6 @@ function App() {
   return (
     <div style={{ padding: '15px', maxWidth: '480px', margin: '0 auto', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', backgroundColor: '#fff', minHeight: '100vh' }}>
       
-      {/* Header Aplikasi */}
       <div style={{ textAlign: 'center', marginBottom: '25px', paddingBottom: '15px', borderBottom: '2px solid #eaeaea' }}>
         <h2 style={{ margin: '0 0 5px 0', color: '#1a1a1a', fontSize: '24px', fontWeight: '800' }}>Sensus UMKM Digital</h2>
         <p style={{ margin: '0', fontSize: '14px', color: '#666', fontWeight: '500' }}>Desa Sukadana • Internal KKN 2026</p>
@@ -222,7 +222,6 @@ function App() {
       <form onSubmit={handleSubmitData} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
         <fieldset disabled={loadingSubmit} style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
           
-          {/* Dropdown Kelompok */}
           <div>
             <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Tim Pendata KKN:</label>
             <select value={kelompok} onChange={(e) => setKelompok(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', backgroundColor: '#f9f9f9', outline: 'none' }}>
@@ -235,7 +234,6 @@ function App() {
             </select>
           </div>
 
-          {/* Inputs Teks */}
           <div>
             <label style={{ display: 'block', fontWeight: '700', marginBottom: '6px', color: '#333', fontSize: '14px' }}>Nama Tempat / UMKM:</label>
             <input type="text" value={namaUmkm} onChange={(e) => setNamaUmkm(e.target.value)} required placeholder="Masukkan nama toko/usaha" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }} />
@@ -321,15 +319,13 @@ function App() {
             )}
           </div>
 
-          {/* Tombol Simpan Keren */}
           <button type="submit" disabled={loadingSubmit} style={{ padding: '14px', fontSize: '16px', fontWeight: 'bold', backgroundColor: loadingSubmit ? '#6c757d' : '#198754', color: 'white', border: 'none', borderRadius: '8px', cursor: loadingSubmit ? 'not-allowed' : 'pointer', marginTop: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}>
-            {loadingSubmit ? '⚡ Mengunggah Data (Super Cepat)...' : '💾 SIMPAN DATA KKN'}
+            {loadingSubmit ? '⚡ Mengunggah Data (Sat-Set)...' : '💾 SIMPAN DATA KKN'}
           </button>
 
         </fieldset>
       </form>
 
-      {/* Panel Unduh Data */}
       <div style={{ marginTop: '40px', padding: '15px', borderTop: '2px dashed #ccc', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffeba2' }}>
         <h4 style={{ margin: '0 0 5px 0', color: '#856404', fontWeight: 'bold' }}>🔑 Fitur Khusus Rekap Data</h4>
         <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#856404' }}>Khusus bagian rekapitulasi data. Klik tombol di bawah dari laptop untuk mengunduh seluruh data gabungan kelompok dalam bentuk file CSV/Excel.</p>
